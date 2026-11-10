@@ -36,21 +36,26 @@ var spec string
 // data: the transcript stays as it is, only observations are bounded.
 type Harness struct {
 	maxOutputBytes int
+	instructions   bool
 
 	mu    sync.Mutex
 	stats map[string]outputStats
 }
 
-// outputStats is what the last shaped step did to the transcript.
+// outputStats accumulates what shaping the transcript cut, per session.
 type outputStats struct {
 	truncated int
 	removed   int
+	// countedThrough is how many messages of the transcript it covers. The
+	// transcript grows by appending, so counting the messages beyond it is
+	// what makes the counters cumulative without counting a step twice.
+	countedThrough int
 }
 
 // NewHarness builds the harness. A non-positive cap falls back to
-// DefaultMaxOutputBytes.
-func NewHarness(maxOutputBytes int) *Harness {
-	h := &Harness{maxOutputBytes: maxOutputBytes, stats: make(map[string]outputStats)}
+// DefaultMaxOutputBytes; instructions adds the Codex text to the system prompt.
+func NewHarness(maxOutputBytes int, instructions bool) *Harness {
+	h := &Harness{maxOutputBytes: maxOutputBytes, instructions: instructions, stats: make(map[string]outputStats)}
 	if h.maxOutputBytes <= 0 {
 		h.maxOutputBytes = DefaultMaxOutputBytes
 	}
@@ -61,8 +66,12 @@ func NewHarness(maxOutputBytes int) *Harness {
 func (h *Harness) Name() string { return harness.Codex }
 
 // SystemSpec is the Codex instruction text, with the tool output cap filled in
-// from the configured limit.
+// from the configured limit. It is empty when the instructions are turned off:
+// the transcript is still bounded, the model just reads Crush's own prompt only.
 func (h *Harness) SystemSpec() string {
+	if !h.instructions {
+		return ""
+	}
 	return strings.Replace(spec, "{{max_output_bytes}}", strconv.Itoa(h.cap()), 1)
 }
 
@@ -73,49 +82,64 @@ func (h *Harness) Prepare(ctx context.Context, sessionID, goal string) error { r
 func (h *Harness) Tools() []fantasy.AgentTool { return nil }
 
 // Shape bounds every tool output and keeps the rest of the transcript as it is.
-// The counters it reports describe the step that just ran, not the whole
-// session, so repeated steps over the same history do not inflate them.
+// The counters it keeps are cumulative for the session: a step only counts the
+// messages it has not seen yet, and the transcript shrinking (a summary
+// replacing it) starts the count over.
 func (h *Harness) Shape(ctx context.Context, sessionID string, messages []fantasy.Message) []fantasy.Message {
+	total, countedThrough := h.counters(sessionID, len(messages))
 	out := make([]fantasy.Message, 0, len(messages))
-	var stats outputStats
-	for _, message := range messages {
+	for i, message := range messages {
 		if message.Role != fantasy.MessageRoleTool {
 			out = append(out, message)
 			continue
 		}
 		bounded, step := h.boundMessage(message)
-		stats.truncated += step.truncated
-		stats.removed += step.removed
+		if i >= countedThrough {
+			total.truncated += step.truncated
+			total.removed += step.removed
+		}
 		out = append(out, bounded)
 	}
-	h.record(sessionID, stats)
+	h.record(sessionID, total, len(messages))
 	return out
 }
 
-// Status reports the output cap and what the last shaped step had to cut.
+// Status reports the output cap and what shaping the transcript cut so far in
+// the session.
 func (h *Harness) Status(ctx context.Context, sessionID string) (string, error) {
 	h.mu.Lock()
 	stats := h.stats[sessionID]
 	h.mu.Unlock()
 	return fmt.Sprintf(
-		"cap_bytes = %d\ntruncated_outputs = %d\nremoved_bytes = %d\nwindow = last step",
+		"cap_bytes = %d\ntruncated_outputs = %d\nremoved_bytes = %d\nwindow = session",
 		h.cap(), stats.truncated, stats.removed,
 	), nil
 }
 
-// record stores the counters of the step for the session. A step that cut
-// nothing drops the entry, so the map only grows with sessions that really
-// overflowed.
-func (h *Harness) record(sessionID string, stats outputStats) {
+// counters returns what the session has cut so far and how much of the
+// transcript it covers. A transcript shorter than that boundary was replaced,
+// so the counters start over.
+func (h *Harness) counters(sessionID string, messageCount int) (outputStats, int) {
 	if sessionID == "" {
-		return
+		return outputStats{}, 0
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if stats.truncated == 0 {
-		delete(h.stats, sessionID)
+	stats := h.stats[sessionID]
+	if messageCount < stats.countedThrough {
+		return outputStats{}, 0
+	}
+	return stats, stats.countedThrough
+}
+
+// record stores the cumulative counters and the boundary they cover.
+func (h *Harness) record(sessionID string, stats outputStats, messageCount int) {
+	if sessionID == "" {
 		return
 	}
+	stats.countedThrough = messageCount
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.stats[sessionID] = stats
 }
 

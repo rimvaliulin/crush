@@ -118,7 +118,7 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 	stateStore := skillstate.New(conn, store.Config().Options.GetSkillStateMaxBytes())
 	harnesses := harness.New(
 		harness.NewDefault(),
-		codex.NewHarness(store.Config().Options.GetCodexMaxOutputBytes()),
+		codex.NewHarness(store.Config().Options.GetCodexMaxOutputBytes(), store.Config().Options.GetCodexInstructions()),
 		skillstate.NewHarness(stateStore, tools.NewSkillStateTool(stateStore)),
 	)
 	sessions := session.NewService(q, conn)

@@ -15,6 +15,7 @@ import (
 
 	"charm.land/catwalk/v3/pkg/catwalk"
 	"github.com/charmbracelet/crush/internal/csync"
+	"github.com/charmbracelet/crush/internal/harness/codex"
 	"github.com/charmbracelet/crush/internal/hooks"
 	"github.com/charmbracelet/crush/internal/oauth"
 	"github.com/charmbracelet/crush/internal/oauth/copilot"
@@ -495,7 +496,8 @@ type HarnessOptions struct {
 
 // CodexOptions configures the Codex-style harness.
 type CodexOptions struct {
-	MaxOutputBytes *int `json:"max_output_bytes,omitempty" jsonschema:"description=Cap in bytes on one tool output shown to the model. A longer output reaches the model cut in the middle, with a marker. 0 or negative restores the default.,default=12000,example=24000"`
+	MaxOutputBytes *int  `json:"max_output_bytes,omitempty" jsonschema:"description=Cap in bytes on one tool output shown to the model. A longer output reaches the model cut in the middle, with a marker. 0 or negative restores the default.,default=12000,example=24000"`
+	Instructions   *bool `json:"instructions,omitempty" jsonschema:"description=Append the Codex instruction text to the system prompt. Turn it off to keep only the bounded tool output. The default (unset) appends the text.,default=true"`
 }
 
 // SkillStateOptions configures the bounded-prompt harness.
@@ -512,8 +514,9 @@ const DefaultMaxBackgroundJobs = 50
 const DefaultSkillStateMaxBytes = 4096
 
 // DefaultCodexMaxOutputBytes bounds one tool output when the user has not
-// configured max_output_bytes.
-const DefaultCodexMaxOutputBytes = 12000
+// configured max_output_bytes. The harness owns the number; it is repeated
+// here so callers of the option do not import the implementation.
+const DefaultCodexMaxOutputBytes = codex.DefaultMaxOutputBytes
 
 // GetCodexMaxOutputBytes returns the tool output cap in bytes, always
 // positive. The nil receiver and every unset field mean
@@ -524,6 +527,16 @@ func (o *Options) GetCodexMaxOutputBytes() int {
 		return DefaultCodexMaxOutputBytes
 	}
 	return *o.Harness.Codex.MaxOutputBytes
+}
+
+// GetCodexInstructions reports whether the Codex instruction text is appended
+// to the system prompt. Unset means yes, so the harness is the default one
+// unless the user turns it off.
+func (o *Options) GetCodexInstructions() bool {
+	if o == nil || o.Harness == nil || o.Harness.Codex == nil || o.Harness.Codex.Instructions == nil {
+		return true
+	}
+	return *o.Harness.Codex.Instructions
 }
 
 // GetSkillStateMaxBytes returns the state cap in bytes, always positive. The

@@ -38,8 +38,8 @@ The harness is fixed for the life of the session, like every other one.
   The model keeps the beginning and the end and the marker says how much was
   dropped. Nothing is removed from the session: the transcript on disk keeps
   every byte, only the prompt is bounded.
-- **Status.** `crush_info` reports the harness, the cap and what the last step
-  had to cut:
+- **Status.** `crush_info` reports the harness, the cap and what shaping the
+  transcript cut so far in the session:
 
   ```
   [harness]
@@ -47,8 +47,11 @@ The harness is fixed for the life of the session, like every other one.
   cap_bytes = 12000
   truncated_outputs = 0
   removed_bytes = 0
-  window = last step
+  window = session
   ```
+
+  The counters accumulate as the transcript grows and start over when a
+  summary replaces it.
 
 ## Configuration
 
@@ -57,16 +60,33 @@ The harness is fixed for the life of the session, like every other one.
   "options": {
     "harness": {
       "codex": {
-        "max_output_bytes": 24000
+        "max_output_bytes": 24000,
+        "instructions": false
       }
     }
   }
 }
 ```
 
-The default is 12000 bytes: Codex stores 10 000 bytes of content plus the 20%
-allowance it adds for the surrounding JSON. `0` or a negative value restores
-the default.
+`max_output_bytes` defaults to 12000: Codex stores 10 000 bytes of content
+plus the 20% allowance it adds for the surrounding JSON. `0` or a negative
+value restores the default.
+
+`instructions` defaults to `true`. Turn it off to keep only the bounded tool
+output: the session then reads Crush's own prompt, which is cheaper but does
+not tell the model that outputs are cut.
+
+## Differences from the default harness
+
+| | `default` | `codex` |
+|---|---|---|
+| System prompt | Crush's own prompt | plus the Codex base instructions (about 270 lines) |
+| Context | the whole transcript | the whole transcript |
+| Tool output | as the tool produced it | longer than the cap cut in the middle, with a marker and the original size |
+| Tools | every Crush tool | the same, no extra tools |
+| `crush_info` | `name = default`, `status = none` | cap and truncation counters |
+| Options | none | `options.harness.codex` |
+| Cost | the transcript only | transcript plus the instruction text on every request |
 
 ## What is not ported
 

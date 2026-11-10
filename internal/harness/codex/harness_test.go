@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -35,8 +36,8 @@ func resultTextOf(t *testing.T, message fantasy.Message) string {
 func TestNameIsTheCatalogName(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, harness.Codex, NewHarness(0).Name())
-	info, ok := harness.Lookup(NewHarness(0).Name())
+	require.Equal(t, harness.Codex, NewHarness(0, true).Name())
+	info, ok := harness.Lookup(NewHarness(0, true).Name())
 	require.True(t, ok)
 	require.Equal(t, "Codex", info.Label)
 }
@@ -44,7 +45,7 @@ func TestNameIsTheCatalogName(t *testing.T) {
 func TestSystemSpecCarriesTheOutputCap(t *testing.T) {
 	t.Parallel()
 
-	spec := NewHarness(2048).SystemSpec()
+	spec := NewHarness(2048, true).SystemSpec()
 	require.Contains(t, spec, "2048 bytes")
 	require.NotContains(t, spec, "{{max_output_bytes}}")
 }
@@ -52,7 +53,7 @@ func TestSystemSpecCarriesTheOutputCap(t *testing.T) {
 func TestShapeKeepsShortOutputs(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(1024)
+	h := NewHarness(1024, true)
 	message := toolMessage("short output")
 	shaped := h.Shape(context.Background(), "s1", []fantasy.Message{message})
 
@@ -62,7 +63,7 @@ func TestShapeKeepsShortOutputs(t *testing.T) {
 func TestShapeCutsLongOutputsInTheMiddle(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(512)
+	h := NewHarness(512, true)
 	head := strings.Repeat("a", 150)
 	body := strings.Repeat("m", 5000)
 	tail := strings.Repeat("z", 150)
@@ -80,7 +81,7 @@ func TestShapeCutsLongOutputsInTheMiddle(t *testing.T) {
 func TestShapeLeavesOtherMessagesAlone(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(64)
+	h := NewHarness(64, true)
 	long := strings.Repeat("x", 500)
 	shaped := h.Shape(context.Background(), "s1", []fantasy.Message{
 		fantasy.NewUserMessage(long),
@@ -94,7 +95,7 @@ func TestShapeLeavesOtherMessagesAlone(t *testing.T) {
 func TestShapeIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(256)
+	h := NewHarness(256, true)
 	long := strings.Repeat("q", 4000)
 	once := h.Shape(context.Background(), "s1", []fantasy.Message{toolMessage(long)})
 	twice := h.Shape(context.Background(), "s1", once)
@@ -105,42 +106,64 @@ func TestShapeIsIdempotent(t *testing.T) {
 func TestShapeKeepsValidUTF8(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(200)
+	h := NewHarness(200, true)
 	shaped := h.Shape(context.Background(), "s1", []fantasy.Message{toolMessage(strings.Repeat("д", 500))})
 
 	text := resultTextOf(t, shaped[0])
 	require.True(t, utf8.ValidString(text), "cutting must not split a rune")
 }
 
-func TestStatusCountsTheLastStep(t *testing.T) {
+// statusInt reads one key of the [Harness.Status] report.
+func statusInt(t *testing.T, status, key string) int {
+	t.Helper()
+	for _, line := range strings.Split(status, "\n") {
+		value, ok := strings.CutPrefix(line, key+" = ")
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(value)
+		require.NoError(t, err)
+		return n
+	}
+	t.Fatalf("%q is missing from the status:\n%s", key, status)
+	return 0
+}
+
+func TestStatusCountsTheSession(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(128)
+	h := NewHarness(128, true)
 	long := strings.Repeat("y", 2000)
-	h.Shape(context.Background(), "s1", []fantasy.Message{toolMessage(long), toolMessage(long)})
+	first := toolMessage(long)
+	second := toolMessage(long)
 
+	h.Shape(context.Background(), "s1", []fantasy.Message{first})
 	status, err := h.Status(context.Background(), "s1")
 	require.NoError(t, err)
 	require.Contains(t, status, "cap_bytes = 128")
-	require.Contains(t, status, "truncated_outputs = 2")
-	require.Contains(t, status, "window = last step")
+	require.Contains(t, status, "window = session")
+	perStep := statusInt(t, status, "removed_bytes")
+	require.Equal(t, 1, statusInt(t, status, "truncated_outputs"))
+	require.Positive(t, perStep)
 
-	h.Shape(context.Background(), "s1", []fantasy.Message{toolMessage("short")})
+	h.Shape(context.Background(), "s1", []fantasy.Message{first, second})
 	status, err = h.Status(context.Background(), "s1")
 	require.NoError(t, err)
-	require.Contains(t, status, "truncated_outputs = 0", "the counters describe the latest step")
+	require.Equal(t, 2, statusInt(t, status, "truncated_outputs"), "an appended step adds to the session count")
+	require.Equal(t, 2*perStep, statusInt(t, status, "removed_bytes"))
+
+	h.Shape(context.Background(), "s1", []fantasy.Message{second})
+	status, err = h.Status(context.Background(), "s1")
+	require.NoError(t, err)
+	require.Equal(t, 1, statusInt(t, status, "truncated_outputs"), "a replaced transcript starts the count over")
 }
 
-func TestShapeHandlesACapTooSmallForTheWarning(t *testing.T) {
+func TestInstructionsCanBeTurnedOff(t *testing.T) {
 	t.Parallel()
 
-	h := NewHarness(24)
-	long := strings.Repeat("w", 1000)
-	once := h.Shape(context.Background(), "s1", []fantasy.Message{toolMessage(long)})
-	twice := h.Shape(context.Background(), "s1", once)
+	require.NotEmpty(t, NewHarness(1024, true).SystemSpec())
 
-	text := resultTextOf(t, once[0])
-	require.LessOrEqual(t, len(text), 24)
-	require.True(t, utf8.ValidString(text))
-	require.Equal(t, text, resultTextOf(t, twice[0]), "a cut output stays stable")
+	h := NewHarness(1024, false)
+	require.Empty(t, h.SystemSpec(), "the harness then only bounds tool output")
+	require.Equal(t, 1024, h.cap(), "the cap still applies")
 }

@@ -54,6 +54,11 @@
           "examples": [
             24000
           ]
+        },
+        "instructions": {
+          "type": "boolean",
+          "description": "Append the Codex instruction text to the system prompt. Turn it off to keep only the bounded tool output. The default (unset) appends the text.",
+          "default": true
         }
       },
       "additionalProperties": false,
