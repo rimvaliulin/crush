@@ -32,6 +32,7 @@ import (
 	"github.com/charmbracelet/crush/internal/discover"
 	"github.com/charmbracelet/crush/internal/event"
 	"github.com/charmbracelet/crush/internal/filetracker"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/history"
 	"github.com/charmbracelet/crush/internal/hooks"
 	"github.com/charmbracelet/crush/internal/log"
@@ -150,6 +151,7 @@ type coordinator struct {
 	history     history.Service
 	filetracker filetracker.Service
 	lspManager  *lsp.Manager
+	harnesses   harness.Registry
 	notify      pubsub.Publisher[notify.Notification]
 	runComplete pubsub.Publisher[notify.RunComplete]
 	interactive bool
@@ -219,6 +221,7 @@ type CoordinatorOptions struct {
 	History     history.Service
 	FileTracker filetracker.Service
 	LSPManager  *lsp.Manager
+	Harnesses   harness.Registry
 	Notify      pubsub.Publisher[notify.Notification]
 	RunComplete pubsub.Publisher[notify.RunComplete]
 	Skills      *skills.Manager
@@ -249,6 +252,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		history:         opts.History,
 		filetracker:     opts.FileTracker,
 		lspManager:      opts.LSPManager,
+		harnesses:       opts.Harnesses,
 		notify:          opts.Notify,
 		runComplete:     opts.RunComplete,
 		agents:          make(map[string]SessionAgent),
@@ -906,6 +910,7 @@ func (c *coordinator) buildAgentWithModels(ctx context.Context, ready *errgroup.
 		Messages:             c.messages,
 		Permissions:          c.permissions,
 		Cfg:                  c.cfg,
+		Harnesses:            c.harnesses,
 		Tools:                nil,
 		Notify:               c.notify,
 		RunComplete:          c.runComplete,
@@ -1022,7 +1027,7 @@ func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubA
 	allTools = append(
 		allTools,
 		tools.NewBashTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory, c.cfg.Config().Options.Attribution, modelID, c.cfg.Config().Options.GetMaxBackgroundJobs(), c.cfg.Config().Permissions),
-		tools.NewCrushInfoTool(c.cfg, c.lspManager, c.allSkills, c.activeSkills, c.skillTracker),
+		tools.NewCrushInfoTool(c.cfg, c.lspManager, c.allSkills, c.activeSkills, c.skillTracker, c.harnesses, c.sessions),
 		tools.NewCrushLogsTool(logFile),
 		tools.NewJobOutputTool(c.cfg.Config().Options.DataDirectory),
 		tools.NewJobKillTool(),
@@ -1067,6 +1072,10 @@ func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubA
 			tools.NewReadMCPResourceTool(c.cfg, c.permissions),
 		)
 	}
+
+	// Harness tools are registered once and filtered per session, because
+	// one agent serves sessions that run different harnesses.
+	allTools = c.harnesses.Add(allTools)
 
 	var filteredTools []fantasy.AgentTool
 	for _, tool := range allTools {

@@ -482,13 +482,38 @@ type Options struct {
 	// Crush dialog (loopback pinentry) instead of handing the terminal
 	// over to an external pinentry program. No GPG or git configuration
 	// is modified: the redirect only applies to processes Crush spawns.
-	PinentryIntegrated   *bool `json:"pinentry_integrated,omitempty" jsonschema:"description=Render GPG passphrase prompts as a native Crush dialog instead of an external pinentry program. Works with file-based keys and security keys and never modifies GPG or git configuration.,default=true"`
-	PinentryCacheTimeout *int  `json:"pinentry_cache_timeout,omitempty" jsonschema:"description=Seconds Crush keeps an entered GPG passphrase in memory so repeated signing operations do not re-prompt. 0 (the default) disables it; gpg-agent's own cache applies regardless.,default=0,example=300"`
+	PinentryIntegrated   *bool           `json:"pinentry_integrated,omitempty" jsonschema:"description=Render GPG passphrase prompts as a native Crush dialog instead of an external pinentry program. Works with file-based keys and security keys and never modifies GPG or git configuration.,default=true"`
+	PinentryCacheTimeout *int            `json:"pinentry_cache_timeout,omitempty" jsonschema:"description=Seconds Crush keeps an entered GPG passphrase in memory so repeated signing operations do not re-prompt. 0 (the default) disables it; gpg-agent's own cache applies regardless.,default=0,example=300"`
+	Harness              *HarnessOptions `json:"harness,omitempty" jsonschema:"description=Per-harness options. A session runs the harness it was created with."`
+}
+
+// HarnessOptions configures the execution harnesses a session can run.
+type HarnessOptions struct {
+	SkillState *SkillStateOptions `json:"skillstate,omitempty" jsonschema:"description=SKILL.state harness options (bounded prompt: specification, execution state and the latest observation)"`
+}
+
+// SkillStateOptions configures the bounded-prompt harness.
+type SkillStateOptions struct {
+	MaxStateBytes *int `json:"max_state_bytes,omitempty" jsonschema:"description=Cap in bytes on the compact execution state carried by every step. A patch that exceeds it is rejected. 0 or negative restores the default.,default=4096,example=8192"`
 }
 
 // DefaultMaxBackgroundJobs is how many background shell jobs may run at once
 // when the user has not set max_background_jobs.
 const DefaultMaxBackgroundJobs = 50
+
+// DefaultSkillStateMaxBytes bounds the compact execution state when the user
+// has not configured max_state_bytes.
+const DefaultSkillStateMaxBytes = 4096
+
+// GetSkillStateMaxBytes returns the state cap in bytes, always positive. The
+// nil receiver and every unset field mean DefaultSkillStateMaxBytes, so
+// callers can ask without unwrapping nil pointers.
+func (o *Options) GetSkillStateMaxBytes() int {
+	if o == nil || o.Harness == nil || o.Harness.SkillState == nil || o.Harness.SkillState.MaxStateBytes == nil || *o.Harness.SkillState.MaxStateBytes <= 0 {
+		return DefaultSkillStateMaxBytes
+	}
+	return *o.Harness.SkillState.MaxStateBytes
+}
 
 // GetMaxBackgroundJobs returns the running-job ceiling, always positive.
 func (o *Options) GetMaxBackgroundJobs() int {
@@ -1087,6 +1112,7 @@ func allToolNames() []string {
 		"ls",
 		"question",
 		"sourcegraph",
+		"skillstate",
 		"todos",
 		"view",
 		"write",

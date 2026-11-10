@@ -41,6 +41,7 @@ import (
 	"github.com/charmbracelet/crush/internal/agent/tools/mcp"
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/csync"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/hooks"
 	"github.com/charmbracelet/crush/internal/message"
 	"github.com/charmbracelet/crush/internal/permission"
@@ -238,6 +239,9 @@ type sessionAgent struct {
 	isSubAgent bool
 	sessions   session.Service
 	messages   message.Service
+	// harnesses maps session harness names to their implementations. An
+	// unnamed session runs the default harness.
+	harnesses harness.Registry
 	// cfg backs channel reply routing (config lookup + MCP tool
 	// invocation). Nil in tests and subagents that never see channel
 	// turns; sendChannelReply treats nil as "routing disabled".
@@ -307,6 +311,7 @@ type SessionAgentOptions struct {
 	Sessions             session.Service
 	Messages             message.Service
 	Permissions          permission.Service
+	Harnesses            harness.Registry
 	Cfg                  *config.ConfigStore
 	Tools                []fantasy.AgentTool
 	Notify               pubsub.Publisher[notify.Notification]
@@ -327,6 +332,7 @@ func NewSessionAgent(
 		isSubAgent:           opts.IsSubAgent,
 		sessions:             opts.Sessions,
 		messages:             opts.Messages,
+		harnesses:            opts.Harnesses,
 		cfg:                  opts.Cfg,
 		disableAutoSummarize: opts.DisableAutoSummarize,
 		permissions:          opts.Permissions,
@@ -884,6 +890,23 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	largeModel := a.models().Large
 	systemPrompt := a.systemPrompt.Get()
 	promptPrefix := a.systemPromptPrefix.Get()
+
+	sessionLock := sync.Mutex{}
+	currentSession, err := a.sessions.Get(ctx, call.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	// The harness belongs to the session and is fixed at creation, so
+	// nothing here can switch it on or off for this run.
+	sessionHarness := a.harnesses.Get(currentSession.Harness)
+	if sessionHarness != nil {
+		if err := sessionHarness.Prepare(ctx, currentSession.ID, call.Prompt); err != nil {
+			// The session keeps its harness: Shape stays bounded and tells
+			// the step that the state is unavailable.
+			slog.Warn("Harness state unavailable for this run", "harness", sessionHarness.Name(), "error", err)
+		}
+	}
 	var instructions strings.Builder
 
 	for _, server := range mcp.GetStates() {
@@ -900,6 +923,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		systemPrompt += "\n\n<mcp-instructions>\n" + s + "\n</mcp-instructions>"
 	}
 
+	// The specification goes last: the tail of a long prompt is what the
+	// model reads most reliably.
+	if sessionHarness != nil {
+		systemPrompt += "\n\n" + sessionHarness.SystemSpec()
+	}
+
 	if len(agentTools) > 0 {
 		// Add Anthropic caching to the last tool.
 		agentTools[len(agentTools)-1].SetProviderOptions(a.getCacheControlOptions())
@@ -911,12 +940,6 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		fantasy.WithTools(agentTools...),
 		fantasy.WithUserAgent(userAgent),
 	)
-
-	sessionLock := sync.Mutex{}
-	currentSession, err := a.sessions.Get(ctx, call.SessionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
 
 	msgs, err := a.getSessionMessages(ctx, currentSession)
 	if err != nil {
@@ -1020,6 +1043,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 
 			prepared.Messages = dropEmptyToolMedia(prepared.Messages)
 			prepared.Messages = a.workaroundProviderMediaLimitations(prepared.Messages, largeModel)
+
+			// Sessions only see the tools of their own harness, and a
+			// harness may replace the step context with its own shape.
+			prepared.Tools = a.harnesses.FilterTools(currentSession.Harness, prepared.Tools)
+			if sessionHarness != nil {
+				prepared.Messages = sessionHarness.Shape(callContext, call.SessionID, prepared.Messages)
+			}
 
 			lastSystemRoleInx := 0
 			systemMessageUpdated := false

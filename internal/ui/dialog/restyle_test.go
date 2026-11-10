@@ -22,7 +22,7 @@ var (
 	_ StyleRefresher = (*Commands)(nil)
 	_ StyleRefresher = (*Models)(nil)
 	_ StyleRefresher = (*Session)(nil)
-	_ StyleRefresher = (*Reasoning)(nil)
+	_ StyleRefresher = (*Select)(nil)
 	_ StyleRefresher = (*Notifications)(nil)
 	_ StyleRefresher = (*Arguments)(nil)
 	_ StyleRefresher = (*Theme)(nil)
@@ -155,4 +155,13 @@ func TestRefreshStyles_QuestionForm(t *testing.T) {
 	}
 	require.NotEqual(t, questionTextareaStyles(new(styles.CharmtonePantera())).Focused.Text.GetForeground(),
 		want.Focused.Text.GetForeground(), "the themes must look different")
+}
+
+// TestRefreshStyles_Harness checks the shared select dialog restyles its
+// filter input, help and rows.
+func TestRefreshStyles_Harness(t *testing.T) {
+	t.Parallel()
+	requireRestyled(t, func(com *common.Common) Dialog {
+		return NewHarness(com)
+	})
 }

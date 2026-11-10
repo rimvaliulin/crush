@@ -136,7 +136,16 @@ func (w *ClientWorkspace) workspaceID() string {
 // -- Sessions --
 
 func (w *ClientWorkspace) CreateSession(ctx context.Context, title string) (session.Session, error) {
-	sess, err := w.client.CreateSession(ctx, w.workspaceID(), title)
+	return w.createSession(ctx, title, "")
+}
+
+// CreateHarnessSession creates a session that runs the named harness.
+func (w *ClientWorkspace) CreateHarnessSession(ctx context.Context, title, harnessName string) (session.Session, error) {
+	return w.createSession(ctx, title, harnessName)
+}
+
+func (w *ClientWorkspace) createSession(ctx context.Context, title, harnessName string) (session.Session, error) {
+	sess, err := w.client.CreateSession(ctx, w.workspaceID(), title, harnessName)
 	if err != nil {
 		return session.Session{}, err
 	}
@@ -1457,6 +1466,7 @@ func protoToSession(s proto.Session) session.Session {
 		Cost:             s.Cost,
 		Todos:            protoToTodos(s.Todos),
 		Channel:          s.Channel,
+		Harness:          s.Harness,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,
 	}
@@ -1591,6 +1601,7 @@ func sessionToProto(s session.Session) proto.Session {
 		Cost:             s.Cost,
 		Todos:            todosToProto(s.Todos),
 		Channel:          s.Channel,
+		Harness:          s.Harness,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,
 	}

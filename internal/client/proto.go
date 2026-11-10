@@ -690,9 +690,10 @@ func (c *Client) ListSessionHistoryFiles(ctx context.Context, id string, session
 	return files, nil
 }
 
-// CreateSession creates a new session in a workspace as a proto type.
-func (c *Client) CreateSession(ctx context.Context, id string, title string) (*proto.Session, error) {
-	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/sessions", id), nil, jsonBody(proto.Session{Title: title}), http.Header{"Content-Type": []string{"application/json"}})
+// CreateSession creates a new session in a workspace as a proto type. A
+// non-empty harness selects the execution harness of the session.
+func (c *Client) CreateSession(ctx context.Context, id string, title string, harnessName string) (*proto.Session, error) {
+	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/sessions", id), nil, jsonBody(proto.Session{Title: title, Harness: harnessName}), http.Header{"Content-Type": []string{"application/json"}})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}

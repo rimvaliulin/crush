@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/crush/internal/db"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,4 +143,28 @@ func TestEstimatedUsageStateCanBeClearedByExplicitSave(t *testing.T) {
 	refetched, err := sessions.Get(t.Context(), created.ID)
 	require.NoError(t, err)
 	require.False(t, refetched.EstimatedUsage)
+}
+
+func TestCreateHarnessStoresTheHarnessForTheSession(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Cleanup(func() {
+		require.NoError(t, db.Release(dataDir))
+		db.ResetPool()
+	})
+
+	conn, err := db.Connect(t.Context(), dataDir)
+	require.NoError(t, err)
+	sessions := NewService(db.New(conn), conn)
+
+	plain, err := sessions.Create(t.Context(), "plain")
+	require.NoError(t, err)
+	require.Equal(t, harness.DefaultName, plain.Harness)
+
+	stateful, err := sessions.CreateHarness(t.Context(), "skillstate", harness.SkillState)
+	require.NoError(t, err)
+	require.Equal(t, harness.SkillState, stateful.Harness)
+
+	fetched, err := sessions.Get(t.Context(), stateful.ID)
+	require.NoError(t, err)
+	require.Equal(t, harness.SkillState, fetched.Harness, "the harness is stored with the session")
 }

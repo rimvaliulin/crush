@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/pubsub"
 	"github.com/charmbracelet/crush/internal/session"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,13 @@ func (m *mockSessionService) Subscribe(context.Context) <-chan pubsub.Event[sess
 
 func (m *mockSessionService) Create(_ context.Context, title string) (session.Session, error) {
 	s := session.Session{ID: "new-session-id", Title: title}
+	m.created = append(m.created, s)
+	return s, nil
+}
+
+// CreateHarness mirrors Create for a session that runs a harness.
+func (m *mockSessionService) CreateHarness(_ context.Context, title, harnessName string) (session.Session, error) {
+	s := session.Session{ID: "new-session-id", Title: title, Harness: harnessName}
 	m.created = append(m.created, s)
 	return s, nil
 }
@@ -109,14 +117,39 @@ func newTestApp(sessions session.Service) *App {
 	return &App{Sessions: sessions}
 }
 
+func TestCreateHarnessMarksSession(t *testing.T) {
+	mock := &mockSessionService{}
+	app := newTestApp(mock)
+
+	sess, err := app.CreateHarness(t.Context(), "work", harness.SkillState)
+	require.NoError(t, err)
+	require.Equal(t, harness.SkillState, sess.Harness)
+	require.Equal(t, "work", sess.Title)
+
+	plain, err := app.CreateSession(t.Context(), "chat")
+	require.NoError(t, err)
+	require.Equal(t, harness.DefaultName, plain.Harness)
+}
+
+func TestCreateHarnessRejectsUnknownName(t *testing.T) {
+	mock := &mockSessionService{}
+	app := newTestApp(mock)
+
+	_, err := app.CreateHarness(t.Context(), "work", "nope")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown harness")
+	require.Empty(t, mock.created)
+}
+
 func TestResolveSession_NewSession(t *testing.T) {
 	mock := &mockSessionService{}
 	app := newTestApp(mock)
 
-	sess, err := app.resolveSession(t.Context(), "", false)
+	sess, err := app.resolveSession(t.Context(), "", false, "")
 	require.NoError(t, err)
 	require.Equal(t, "new-session-id", sess.ID)
 	require.Len(t, mock.created, 1)
+	require.Equal(t, harness.DefaultName, mock.created[0].Harness)
 }
 
 func TestResolveSession_ContinueByID(t *testing.T) {
@@ -127,7 +160,7 @@ func TestResolveSession_ContinueByID(t *testing.T) {
 	}
 	app := newTestApp(mock)
 
-	sess, err := app.resolveSession(t.Context(), "existing-id", false)
+	sess, err := app.resolveSession(t.Context(), "existing-id", false, "")
 	require.NoError(t, err)
 	require.Equal(t, "existing-id", sess.ID)
 	require.Equal(t, "Old session", sess.Title)
@@ -138,7 +171,7 @@ func TestResolveSession_ContinueByID_NotFound(t *testing.T) {
 	mock := &mockSessionService{}
 	app := newTestApp(mock)
 
-	_, err := app.resolveSession(t.Context(), "nonexistent", false)
+	_, err := app.resolveSession(t.Context(), "nonexistent", false, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "session not found")
 }
@@ -151,7 +184,7 @@ func TestResolveSession_ContinueByID_ChildSession(t *testing.T) {
 	}
 	app := newTestApp(mock)
 
-	_, err := app.resolveSession(t.Context(), "child-id", false)
+	_, err := app.resolveSession(t.Context(), "child-id", false, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot continue a child session")
 }
@@ -160,7 +193,7 @@ func TestResolveSession_ContinueByID_AgentToolSession(t *testing.T) {
 	mock := &mockSessionService{}
 	app := newTestApp(mock)
 
-	_, err := app.resolveSession(t.Context(), "msg123$$tool456", false)
+	_, err := app.resolveSession(t.Context(), "msg123$$tool456", false, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot continue an agent tool session")
 }
@@ -174,7 +207,7 @@ func TestResolveSession_Last(t *testing.T) {
 	}
 	app := newTestApp(mock)
 
-	sess, err := app.resolveSession(t.Context(), "", true)
+	sess, err := app.resolveSession(t.Context(), "", true, "")
 	require.NoError(t, err)
 	require.Equal(t, "most-recent", sess.ID)
 	require.Empty(t, mock.created)
@@ -184,7 +217,34 @@ func TestResolveSession_Last_NoSessions(t *testing.T) {
 	mock := &mockSessionService{}
 	app := newTestApp(mock)
 
-	_, err := app.resolveSession(t.Context(), "", true)
+	_, err := app.resolveSession(t.Context(), "", true, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no sessions found")
+}
+
+func TestResolveSession_NewHarnessSession(t *testing.T) {
+	mock := &mockSessionService{}
+	app := newTestApp(mock)
+
+	sess, err := app.resolveSession(t.Context(), "", false, harness.SkillState)
+	require.NoError(t, err)
+	require.Equal(t, harness.SkillState, sess.Harness)
+	require.Len(t, mock.created, 1)
+	require.Equal(t, harness.SkillState, mock.created[0].Harness)
+}
+
+func TestResolveSession_HarnessCannotResume(t *testing.T) {
+	mock := &mockSessionService{
+		sessions: []session.Session{{ID: "existing-id"}},
+	}
+	app := newTestApp(mock)
+
+	_, err := app.resolveSession(t.Context(), "existing-id", false, harness.SkillState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "only applies to a new session")
+
+	_, err = app.resolveSession(t.Context(), "", true, harness.SkillState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "only applies to a new session")
+	require.Empty(t, mock.created)
 }

@@ -230,6 +230,11 @@ type UI struct {
 	// continueLastSession is set to continue the most recent session on startup.
 	continueLastSession bool
 
+	// pendingHarness marks the next session to create as running a harness.
+	// The harness is fixed at creation, so it is consumed once and cleared
+	// by every other way of starting a session.
+	pendingHarness string
+
 	lastUserMessageTime int64
 
 	// The width and height of the terminal in cells.
@@ -1077,6 +1082,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pubsub.Event[session.Session]:
 		if msg.Type == pubsub.DeletedEvent {
 			if m.session != nil && m.session.ID == msg.Payload.ID {
+				m.pendingHarness = ""
 				if cmd := m.newSession(); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
@@ -2348,10 +2354,19 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 			cmds = append(cmds, util.ReportWarn("Agent is busy, please wait before starting a new session..."))
 			break
 		}
+		m.openHarnessDialog()
+		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionNewHarnessSession:
+		if m.isAgentBusy() {
+			cmds = append(cmds, util.ReportWarn("Agent is busy, please wait before starting a new session..."))
+			break
+		}
+		m.pendingHarness = msg.Name
 		if cmd := m.newSession(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		m.dialog.CloseDialog(dialog.CommandsID)
+		m.dialog.CloseDialog(dialog.HarnessID)
 	case dialog.ActionSummarize:
 		if m.isAgentBusy() {
 			cmds = append(cmds, util.ReportWarn("Agent is busy, please wait before summarizing session..."))
@@ -3468,9 +3483,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					cmds = append(cmds, util.ReportWarn("Agent is busy, please wait before starting a new session..."))
 					break
 				}
-				if cmd := m.newSession(); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
+				m.openHarnessDialog()
 			case key.Matches(msg, m.keyMap.Tab):
 				if m.state != uiLanding {
 					m.setState(m.state, uiFocusMain)
@@ -3649,9 +3662,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					break
 				}
 				m.focus = uiFocusEditor
-				if cmd := m.newSession(); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
+				m.openHarnessDialog()
 			case key.Matches(msg, m.keyMap.Chat.Expand):
 				m.chat.ToggleExpandedSelectedItem()
 			case key.Matches(msg, m.keyMap.Chat.Up):
@@ -5472,6 +5483,18 @@ func (m *UI) openThemeEditorDialog(themeName string) {
 	m.dialog.OpenDialog(themeDialog)
 }
 
+// createSession creates a session for the landing page, consuming the pending
+// harness: a session marked for one is created that way once, and the mark
+// never carries over to a later session.
+func (m *UI) createSession(title string) (session.Session, error) {
+	harnessName := m.pendingHarness
+	m.pendingHarness = ""
+	if harnessName != "" {
+		return m.com.Workspace.CreateHarnessSession(context.Background(), title, harnessName)
+	}
+	return m.com.Workspace.CreateSession(context.Background(), title)
+}
+
 // ensureSession makes sure a session is active, creating one if none is. It
 // returns a command that loads the freshly created session (nil when a session
 // already existed) and an error if creation failed. It mutates UI state, so
@@ -5480,7 +5503,7 @@ func (m *UI) ensureSession() (tea.Cmd, error) {
 	if m.hasSession() {
 		return nil, nil
 	}
-	newSession, err := m.com.Workspace.CreateSession(context.Background(), "New Session")
+	newSession, err := m.createSession("New Session")
 	if err != nil {
 		return nil, err
 	}
@@ -5635,7 +5658,7 @@ func (m *UI) runShellCommand(command string) tea.Cmd {
 func (m *UI) runShellCommandInternal(command string, isFirstMessage bool) tea.Cmd {
 	var cmds []tea.Cmd
 	if !m.hasSession() {
-		newSession, err := m.com.Workspace.CreateSession(context.Background(), "New Session")
+		newSession, err := m.createSession("New Session")
 		if err != nil {
 			return util.ReportError(err)
 		}
@@ -5881,6 +5904,16 @@ func (m *UI) openCommandsDialog() tea.Cmd {
 	m.dialog.OpenDialog(commands)
 
 	return commands.InitialCmd()
+}
+
+// openHarnessDialog asks which harness the session about to be created runs.
+// The palette and ctrl+n both land here, so a new harness adds no command.
+func (m *UI) openHarnessDialog() {
+	if m.dialog.ContainsDialog(dialog.HarnessID) {
+		m.dialog.BringToFront(dialog.HarnessID)
+		return
+	}
+	m.dialog.OpenDialog(dialog.NewHarness(m.com))
 }
 
 // openReasoningDialog opens the reasoning effort dialog.

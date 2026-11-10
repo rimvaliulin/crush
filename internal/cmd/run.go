@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/event"
 	"github.com/charmbracelet/crush/internal/format"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/herdr"
 	"github.com/charmbracelet/crush/internal/proto"
 	"github.com/charmbracelet/crush/internal/pubsub"
@@ -64,6 +65,9 @@ crush run --session {session-id} "Follow up on your last response"
 # Continue the most recent session
 crush run --continue "Follow up on your last response"
 
+# Start a new session with a harness (a bounded prompt for its whole life)
+crush run --harness skillstate "Refactor the parser and prove the tests pass"
+
   `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var (
@@ -74,7 +78,14 @@ crush run --continue "Follow up on your last response"
 			reasoningEffort, _ = cmd.Flags().GetString("reasoning-effort")
 			sessionID, _       = cmd.Flags().GetString("session")
 			useLast, _         = cmd.Flags().GetBool("continue")
+			harnessName, _     = cmd.Flags().GetString("harness")
 		)
+
+		if harnessName != "" {
+			if _, ok := harness.Lookup(harnessName); !ok {
+				return fmt.Errorf("unknown harness %q (known: %s)", harnessName, strings.Join(harness.Names(), ", "))
+			}
+		}
 
 		// Cancel on SIGINT or SIGTERM.
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
@@ -131,7 +142,7 @@ crush run --continue "Follow up on your last response"
 				slog.SetDefault(slog.New(log.New(os.Stderr)))
 			}
 
-			return runNonInteractive(ctx, c, ws, prompt, largeModel, smallModel, reasoningEffort, quiet || verbose, sessionID, useLast)
+			return runNonInteractive(ctx, c, ws, prompt, largeModel, smallModel, reasoningEffort, quiet || verbose, sessionID, useLast, harnessName)
 		}
 
 		ws, cleanup, err := setupLocalWorkspace(cmd)
@@ -160,7 +171,7 @@ crush run --continue "Follow up on your last response"
 			sessionID = sess.ID
 		}
 
-		return appWs.App().RunNonInteractive(ctx, os.Stdout, prompt, largeModel, smallModel, reasoningEffort, quiet || verbose, sessionID, useLast)
+		return appWs.App().RunNonInteractive(ctx, os.Stdout, prompt, largeModel, smallModel, reasoningEffort, quiet || verbose, sessionID, useLast, harnessName)
 	},
 }
 
@@ -172,6 +183,7 @@ func init() {
 	runCmd.Flags().String("reasoning-effort", "", "Reasoning effort for the model (e.g. low, medium, high). Levels depend on the model; unsupported values are rejected with the accepted values listed")
 	runCmd.Flags().StringP("session", "s", "", "Continue a previous session by ID")
 	runCmd.Flags().BoolP("continue", "C", false, "Continue the most recent session")
+	runCmd.Flags().String("harness", "", "Create the new session with the given harness, for example skillstate")
 	runCmd.MarkFlagsMutuallyExclusive("session", "continue")
 }
 
@@ -185,6 +197,7 @@ func runNonInteractive(
 	hideSpinner bool,
 	continueSessionID string,
 	useLast bool,
+	harnessName string,
 ) error {
 	slog.Info("Running in non-interactive mode")
 
@@ -250,7 +263,7 @@ func runNonInteractive(
 
 	defer stopSpinner()
 
-	sess, err := resolveSession(ctx, c, ws.ID, continueSessionID, useLast)
+	sess, err := resolveSession(ctx, c, ws.ID, continueSessionID, useLast, harnessName)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session: %w", err)
 	}
@@ -721,7 +734,10 @@ func validateModelMatches(matches []modelMatch, modelID, label string) (modelMat
 // If continueSessionID is set it fetches that session; if useLast is set it
 // returns the most recently updated top-level session; otherwise it creates a
 // new one.
-func resolveSession(ctx context.Context, c *client.Client, wsID, continueSessionID string, useLast bool) (*proto.Session, error) {
+func resolveSession(ctx context.Context, c *client.Client, wsID, continueSessionID string, useLast bool, harnessName string) (*proto.Session, error) {
+	if harnessName != "" && (continueSessionID != "" || useLast) {
+		return nil, fmt.Errorf("--harness only applies to a new session: a session keeps the harness it was created with")
+	}
 	switch {
 	case continueSessionID != "":
 		sess, err := c.GetSession(ctx, wsID, continueSessionID)
@@ -747,7 +763,7 @@ func resolveSession(ctx context.Context, c *client.Client, wsID, continueSession
 		return &last, nil
 
 	default:
-		return c.CreateSession(ctx, wsID, "non-interactive")
+		return c.CreateSession(ctx, wsID, "non-interactive", harnessName)
 	}
 }
 

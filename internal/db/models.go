@@ -62,4 +62,11 @@ type Session struct {
 	SummaryMessageID sql.NullString `json:"summary_message_id"`
 	Todos            sql.NullString `json:"todos"`
 	Channel          sql.NullString `json:"channel"`
+	Harness          string         `json:"harness"`
+}
+
+type SkillState struct {
+	SessionID string `json:"session_id"`
+	State     string `json:"state"`
+	UpdatedAt int64  `json:"updated_at"`
 }

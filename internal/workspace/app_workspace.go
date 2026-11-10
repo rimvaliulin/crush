@@ -51,6 +51,11 @@ func (w *AppWorkspace) CreateSession(ctx context.Context, title string) (session
 	return w.app.CreateSession(ctx, title)
 }
 
+// CreateHarnessSession creates a session that runs the named harness.
+func (w *AppWorkspace) CreateHarnessSession(ctx context.Context, title, harnessName string) (session.Session, error) {
+	return w.app.CreateHarness(ctx, title, harnessName)
+}
+
 func (w *AppWorkspace) GetSession(ctx context.Context, sessionID string) (session.Session, error) {
 	return w.app.Sessions.Get(ctx, sessionID)
 }

@@ -19,6 +19,8 @@ type Querier interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionFiles(ctx context.Context, sessionID string) error
 	DeleteSessionMessages(ctx context.Context, sessionID string) error
+	DeleteSkillState(ctx context.Context, sessionID string) error
+	EnsureSkillState(ctx context.Context, arg EnsureSkillStateParams) (string, error)
 	GetAverageResponseTime(ctx context.Context) (int64, error)
 	GetFile(ctx context.Context, id string) (File, error)
 	GetFileByPathAndSession(ctx context.Context, arg GetFileByPathAndSessionParams) (File, error)
@@ -29,6 +31,7 @@ type Querier interface {
 	GetMessage(ctx context.Context, id string) (Message, error)
 	GetRecentActivity(ctx context.Context) ([]GetRecentActivityRow, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
+	GetSkillState(ctx context.Context, sessionID string) (GetSkillStateRow, error)
 	GetToolUsage(ctx context.Context) ([]GetToolUsageRow, error)
 	GetTotalStats(ctx context.Context) (GetTotalStatsRow, error)
 	GetUsageByDay(ctx context.Context) ([]GetUsageByDayRow, error)
@@ -64,6 +67,7 @@ type Querier interface {
 	UpdateMessage(ctx context.Context, arg UpdateMessageParams) error
 	UpdateSession(ctx context.Context, arg UpdateSessionParams) (Session, error)
 	UpdateSessionTitleAndUsage(ctx context.Context, arg UpdateSessionTitleAndUsageParams) error
+	UpsertSkillState(ctx context.Context, arg UpsertSkillStateParams) error
 }
 
 var _ Querier = (*Queries)(nil)

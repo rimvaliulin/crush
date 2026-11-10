@@ -143,6 +143,16 @@
         "display"
       ]
     },
+    "HarnessOptions": {
+      "properties": {
+        "skillstate": {
+          "$ref": "#/$defs/SkillStateOptions",
+          "description": "SKILL.state harness options (bounded prompt: specification"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "HookConfig": {
       "properties": {
         "name": {
@@ -691,6 +701,10 @@
           "examples": [
             300
           ]
+        },
+        "harness": {
+          "$ref": "#/$defs/HarnessOptions",
+          "description": "Per-harness options. A session runs the harness it was created with."
         }
       },
       "additionalProperties": false,
@@ -966,6 +980,20 @@
         "model",
         "provider"
       ]
+    },
+    "SkillStateOptions": {
+      "properties": {
+        "max_state_bytes": {
+          "type": "integer",
+          "description": "Cap in bytes on the compact execution state carried by every step. A patch that exceeds it is rejected. 0 or negative restores the default.",
+          "default": 4096,
+          "examples": [
+            8192
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "TUIOptions": {
       "properties": {

@@ -72,6 +72,7 @@ type SessionFile struct {
 // That report is fire-and-forget: errors are logged at debug and the
 // UI never blocks on the call.
 func (m *UI) loadSession(sessionID string) tea.Cmd {
+	m.pendingHarness = ""
 	load := func() tea.Msg {
 		session, err := m.com.Workspace.GetSession(context.Background(), sessionID)
 		if err != nil {

@@ -20,6 +20,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/crush/internal/agent"
 	"github.com/charmbracelet/crush/internal/agent/notify"
+	"github.com/charmbracelet/crush/internal/agent/tools"
 	"github.com/charmbracelet/crush/internal/agent/tools/mcp"
 	"github.com/charmbracelet/crush/internal/clipboard"
 	"github.com/charmbracelet/crush/internal/config"
@@ -27,6 +28,8 @@ import (
 	"github.com/charmbracelet/crush/internal/event"
 	"github.com/charmbracelet/crush/internal/filetracker"
 	"github.com/charmbracelet/crush/internal/format"
+	"github.com/charmbracelet/crush/internal/harness"
+	"github.com/charmbracelet/crush/internal/harness/skillstate"
 	"github.com/charmbracelet/crush/internal/herdr"
 	"github.com/charmbracelet/crush/internal/history"
 	"github.com/charmbracelet/crush/internal/hooks"
@@ -71,6 +74,8 @@ type App struct {
 
 	Skills *skills.Manager
 
+	harnesses harness.Registry
+
 	config *config.ConfigStore
 
 	serviceEventsWG *sync.WaitGroup
@@ -109,6 +114,8 @@ type App struct {
 // skills.NewManager + skills.DiscoverFromConfig).
 func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr *skills.Manager) (*App, error) {
 	q := db.New(conn)
+	stateStore := skillstate.New(conn, store.Config().Options.GetSkillStateMaxBytes())
+	harnesses := harness.New(harness.NewDefault(), skillstate.NewHarness(stateStore, tools.NewSkillStateTool(stateStore)))
 	sessions := session.NewService(q, conn)
 	messages := message.NewService(q)
 	files := history.NewService(q, conn)
@@ -137,6 +144,7 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 		Pinentry:    pinentry.DefaultService(),
 		LSPManager:  lsp.NewManager(store),
 		Skills:      skillsMgr,
+		harnesses:   harnesses,
 
 		globalCtx:  ctx,
 		hookRunner: hookRunner,
@@ -332,7 +340,7 @@ func (app *App) ReportCurrentSession(sessionID string) {
 
 // RunNonInteractive runs the application in non-interactive mode with the
 // given prompt, printing to stdout.
-func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt, largeModel, smallModel, reasoningEffort string, hideSpinner bool, continueSessionID string, useLast bool) error {
+func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt, largeModel, smallModel, reasoningEffort string, hideSpinner bool, continueSessionID string, useLast bool, harnessName string) error {
 	slog.Info("Running in non-interactive mode")
 
 	// No dialog can answer an integrated pinentry prompt here, so GPG
@@ -419,7 +427,7 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 
 	defer stopSpinner()
 
-	sess, err := app.resolveSession(ctx, continueSessionID, useLast)
+	sess, err := app.resolveSession(ctx, continueSessionID, useLast, harnessName)
 	if err != nil {
 		return fmt.Errorf("failed to create session for non-interactive mode: %w", err)
 	}
@@ -932,6 +940,7 @@ func (app *App) initCoderAgent(ctx context.Context, interactive bool) error {
 		History:     app.History,
 		FileTracker: app.FileTracker,
 		LSPManager:  app.LSPManager,
+		Harnesses:   app.harnesses,
 		Notify:      app.agentNotifications,
 		RunComplete: app.runCompletions,
 		Skills:      app.Skills,

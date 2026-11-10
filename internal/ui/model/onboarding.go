@@ -51,6 +51,7 @@ func (m *UI) updateInitializeView(msg tea.KeyPressMsg) (cmds []tea.Cmd) {
 func (m *UI) initializeProject() tea.Cmd {
 	// clear the session
 	var cmds []tea.Cmd
+	m.pendingHarness = ""
 	if cmd := m.newSession(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}

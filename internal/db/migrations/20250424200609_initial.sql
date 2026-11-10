@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     prompt_tokens  INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0),
     completion_tokens  INTEGER NOT NULL DEFAULT 0 CHECK (completion_tokens>= 0),
     cost REAL NOT NULL DEFAULT 0.0 CHECK (cost >= 0.0),
+    harness TEXT NOT NULL DEFAULT '',  -- execution harness, empty for the default agent
     updated_at INTEGER NOT NULL,  -- Unix timestamp in seconds
     created_at INTEGER NOT NULL   -- Unix timestamp in seconds
 );

@@ -64,10 +64,10 @@ func (s *Session) RefreshStyles() {
 }
 
 // RefreshStyles implements [StyleRefresher].
-func (r *Reasoning) RefreshStyles() {
-	r.help.Styles = r.com.Styles.DialogHelpStyles()
-	r.input.SetStyles(r.com.Styles.TextInput)
-	refreshItems(r.list.Items())
+func (s *Select) RefreshStyles() {
+	s.help.Styles = s.com.Styles.DialogHelpStyles()
+	s.input.SetStyles(s.com.Styles.TextInput)
+	refreshItems(s.list.Items())
 }
 
 // RefreshStyles implements [StyleRefresher].
@@ -195,10 +195,10 @@ func (s *SessionItem) RefreshStyles() {
 }
 
 // RefreshStyles implements [StyleRefresher].
-func (r *ReasoningItem) RefreshStyles() {
-	r.cache = nil
-	if r.Versioned != nil {
-		r.Bump()
+func (s *SelectItem) RefreshStyles() {
+	s.cache = nil
+	if s.Versioned != nil {
+		s.Bump()
 	}
 }
 

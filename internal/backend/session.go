@@ -10,11 +10,15 @@ import (
 	"github.com/charmbracelet/crush/internal/session"
 )
 
-// CreateSession creates a new session in the given workspace.
-func (b *Backend) CreateSession(ctx context.Context, workspaceID, title string) (session.Session, error) {
+// CreateSession creates a new session in the given workspace. A non-empty
+// harness selects the execution harness the session keeps for its whole life.
+func (b *Backend) CreateSession(ctx context.Context, workspaceID, title, harnessName string) (session.Session, error) {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {
 		return session.Session{}, err
+	}
+	if harnessName != "" {
+		return ws.CreateHarness(ctx, title, harnessName)
 	}
 
 	return ws.CreateSession(ctx, title)

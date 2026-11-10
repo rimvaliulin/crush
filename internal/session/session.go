@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/crush/internal/db"
 	"github.com/charmbracelet/crush/internal/event"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/pubsub"
 	"github.com/google/uuid"
 	"github.com/zeebo/xxh3"
@@ -60,13 +61,19 @@ type Session struct {
 	Cost             float64
 	Todos            []Todo
 	Channel          string
-	CreatedAt        int64
-	UpdatedAt        int64
+	// Harness names the execution harness of the session (see the
+	// internal/harness package). Every session names one: an empty value
+	// is read as the default harness. It is fixed for the life of the
+	// session: there is no way to switch it.
+	Harness   string
+	CreatedAt int64
+	UpdatedAt int64
 }
 
 type Service interface {
 	pubsub.Subscriber[Session]
 	Create(ctx context.Context, title string) (Session, error)
+	CreateHarness(ctx context.Context, title, harness string) (Session, error)
 	CreateTitleSession(ctx context.Context, parentSessionID string) (Session, error)
 	CreateTaskSession(ctx context.Context, toolCallID, parentSessionID, title string) (Session, error)
 	Get(ctx context.Context, id string) (Session, error)
@@ -99,10 +106,27 @@ type service struct {
 	estimatedUsage   map[string]bool
 }
 
+// Create creates a session that runs the default harness. A harness that
+// needs no choice from the caller is created here; create fills the name in.
 func (s *service) Create(ctx context.Context, title string) (Session, error) {
+	return s.create(ctx, title, "")
+}
+
+// CreateHarness creates a session that runs the named harness for its whole
+// life. Callers validate the name against the harness catalog; an unknown name
+// leaves the agent with its default behaviour.
+func (s *service) CreateHarness(ctx context.Context, title, harnessName string) (Session, error) {
+	return s.create(ctx, title, harnessName)
+}
+
+func (s *service) create(ctx context.Context, title, harnessName string) (Session, error) {
+	if harnessName == "" {
+		harnessName = harness.DefaultName
+	}
 	dbSession, err := s.q.CreateSession(ctx, db.CreateSessionParams{
-		ID:    uuid.New().String(),
-		Title: title,
+		ID:      uuid.New().String(),
+		Title:   title,
+		Harness: harnessName,
 	})
 	if err != nil {
 		return Session{}, err
@@ -118,6 +142,7 @@ func (s *service) CreateTaskSession(ctx context.Context, toolCallID, parentSessi
 		ID:              toolCallID,
 		ParentSessionID: sql.NullString{String: parentSessionID, Valid: true},
 		Title:           title,
+		Harness:         harness.DefaultName,
 	})
 	if err != nil {
 		return Session{}, err
@@ -132,6 +157,7 @@ func (s *service) CreateTitleSession(ctx context.Context, parentSessionID string
 		ID:              "title-" + parentSessionID,
 		ParentSessionID: sql.NullString{String: parentSessionID, Valid: true},
 		Title:           "Generate a title",
+		Harness:         harness.DefaultName,
 	})
 	if err != nil {
 		return Session{}, err
@@ -338,6 +364,7 @@ func (s *service) fromDBItem(item db.Session) Session {
 		Cost:             item.Cost,
 		Todos:            todos,
 		Channel:          item.Channel.String,
+		Harness:          item.Harness,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
 	}

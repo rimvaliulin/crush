@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/crush/internal/agent"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/hooks"
 	"github.com/charmbracelet/crush/internal/permission"
 	"github.com/charmbracelet/crush/internal/session"
@@ -20,7 +22,21 @@ const sessionEndTimeout = 2 * time.Second
 // CreateSession creates a new session and fires SessionStart. Every
 // session creation path goes through here so the hook is consistent.
 func (app *App) CreateSession(ctx context.Context, title string) (session.Session, error) {
-	sess, err := app.Sessions.Create(ctx, title)
+	return app.createSession(ctx, title, harness.DefaultName)
+}
+
+// CreateHarness creates a session that runs the named harness for its whole
+// life. Unknown names are rejected so a typo cannot silently start a default
+// session.
+func (app *App) CreateHarness(ctx context.Context, title, harnessName string) (session.Session, error) {
+	if _, ok := harness.Lookup(harnessName); !ok {
+		return session.Session{}, fmt.Errorf("unknown harness %q (known: %s)", harnessName, strings.Join(harness.Names(), ", "))
+	}
+	return app.createSession(ctx, title, harnessName)
+}
+
+func (app *App) createSession(ctx context.Context, title, harnessName string) (session.Session, error) {
+	sess, err := app.Sessions.CreateHarness(ctx, title, harnessName)
 	if err != nil {
 		return session.Session{}, err
 	}
@@ -30,8 +46,13 @@ func (app *App) CreateSession(ctx context.Context, title string) (session.Sessio
 
 // resolveSession resolves which session to use for a non-interactive
 // run: the given session, the most recent top-level one, or a new one.
-// Resumed sessions fire SessionStart with source "resume".
-func (app *App) resolveSession(ctx context.Context, continueSessionID string, useLast bool) (session.Session, error) {
+// Resumed sessions fire SessionStart with source "resume". A SKILL.state
+// session can only be created here, never resumed: the mode is fixed at
+// creation.
+func (app *App) resolveSession(ctx context.Context, continueSessionID string, useLast bool, harnessName string) (session.Session, error) {
+	if harnessName != "" && (continueSessionID != "" || useLast) {
+		return session.Session{}, fmt.Errorf("a harness only applies to a new session: a session keeps the harness it was created with")
+	}
 	var sess session.Session
 	var err error
 	switch {
@@ -51,6 +72,8 @@ func (app *App) resolveSession(ctx context.Context, continueSessionID string, us
 		if err != nil {
 			return session.Session{}, fmt.Errorf("no sessions found to continue")
 		}
+	case harnessName != "":
+		return app.CreateHarness(ctx, agent.DefaultSessionName, harnessName)
 	default:
 		return app.CreateSession(ctx, agent.DefaultSessionName)
 	}

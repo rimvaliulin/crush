@@ -11,8 +11,10 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/crush/internal/agent/tools/mcp"
 	"github.com/charmbracelet/crush/internal/config"
+	"github.com/charmbracelet/crush/internal/harness"
 	"github.com/charmbracelet/crush/internal/lsp"
 	"github.com/charmbracelet/crush/internal/permission"
+	"github.com/charmbracelet/crush/internal/session"
 	"github.com/charmbracelet/crush/internal/skills"
 )
 
@@ -29,17 +31,19 @@ func NewCrushInfoTool(
 	allSkills []*skills.Skill,
 	activeSkills []*skills.Skill,
 	skillTracker *skills.Tracker,
+	harnesses harness.Registry,
+	sessions session.Service,
 ) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		CrushInfoToolName,
 		crushInfoDescription,
 		func(ctx context.Context, _ CrushInfoParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
-			return fantasy.NewTextResponse(buildCrushInfo(cfg, lspManager, allSkills, activeSkills, skillTracker)), nil
+			return fantasy.NewTextResponse(buildCrushInfo(ctx, cfg, lspManager, allSkills, activeSkills, skillTracker, harnesses, sessions, GetSessionFromContext(ctx))), nil
 		},
 	)
 }
 
-func buildCrushInfo(cfg *config.ConfigStore, lspManager *lsp.Manager, allSkills []*skills.Skill, activeSkills []*skills.Skill, skillTracker *skills.Tracker) string {
+func buildCrushInfo(ctx context.Context, cfg *config.ConfigStore, lspManager *lsp.Manager, allSkills []*skills.Skill, activeSkills []*skills.Skill, skillTracker *skills.Tracker, harnesses harness.Registry, sessions session.Service, sessionID string) string {
 	var b strings.Builder
 
 	writeConfigFiles(&b, cfg)
@@ -54,6 +58,7 @@ func buildCrushInfo(cfg *config.ConfigStore, lspManager *lsp.Manager, allSkills 
 	writeDisabledTools(&b, cfg)
 	writeOptions(&b, cfg)
 	writeAttribution(&b, cfg)
+	writeHarness(ctx, &b, harnesses, sessions, sessionID)
 
 	return b.String()
 }
@@ -508,4 +513,34 @@ func lspStateString(state lsp.ServerState) string {
 	default:
 		return "unknown"
 	}
+}
+
+// writeHarness reports which harness the current session runs and what that
+// harness says about itself.
+func writeHarness(ctx context.Context, b *strings.Builder, harnesses harness.Registry, sessions session.Service, sessionID string) {
+	b.WriteString("[harness]\n")
+
+	if sessions == nil || sessionID == "" {
+		b.WriteString("name = none\n\n")
+		return
+	}
+
+	name := harness.DefaultName
+	if sess, err := sessions.Get(ctx, sessionID); err == nil && sess.Harness != "" {
+		name = sess.Harness
+	}
+
+	fmt.Fprintf(b, "name = %s\n", name)
+	h := harnesses.Get(name)
+	if h == nil {
+		b.WriteString("status = unavailable (harness not registered)\n\n")
+		return
+	}
+	text, err := h.Status(ctx, sessionID)
+	if err != nil {
+		fmt.Fprintf(b, "status = unavailable (%v)\n\n", err)
+		return
+	}
+	b.WriteString(text)
+	b.WriteString("\n\n")
 }

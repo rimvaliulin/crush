@@ -176,15 +176,15 @@ func TestSessionItem_MutatorsBumpVersion(t *testing.T) {
 	})
 }
 
-// TestReasoningItem_MutatorsBumpVersion covers F6 §4.5 for the
-// reasoning effort dialog items.
-func TestReasoningItem_MutatorsBumpVersion(t *testing.T) {
+// TestSelectItem_MutatorsBumpVersion covers F6 §4.5 for the rows of a
+// [Select] dialog, shared by the reasoning effort and harness pickers.
+func TestSelectItem_MutatorsBumpVersion(t *testing.T) {
 	t.Parallel()
 
 	sty := styles.CharmtonePantera()
-	item := &ReasoningItem{
+	item := &SelectItem{
 		Versioned: list.NewVersioned(),
-		effort:    "medium",
+		value:     "medium",
 		title:     "Medium",
 		t:         &sty,
 	}

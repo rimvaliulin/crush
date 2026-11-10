@@ -27,6 +27,11 @@ func (m *mockSessionService) Create(ctx context.Context, title string) (session.
 	return session.Session{}, nil
 }
 
+// CreateHarness mirrors Create for a session that runs a harness.
+func (m *mockSessionService) CreateHarness(ctx context.Context, title, harnessName string) (session.Session, error) {
+	return m.Create(ctx, title)
+}
+
 func (m *mockSessionService) CreateTitleSession(ctx context.Context, parentSessionID string) (session.Session, error) {
 	return session.Session{}, nil
 }

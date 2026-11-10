@@ -335,14 +335,14 @@ func (c *controllerV1) handleGetWorkspaceSessions(w http.ResponseWriter, r *http
 func (c *controllerV1) handlePostWorkspaceSessions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var args session.Session
+	var args proto.Session
 	if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
 		c.server.logError(r, "Failed to decode request", "error", err)
 		jsonError(w, http.StatusBadRequest, "failed to decode request")
 		return
 	}
 
-	sess, err := c.backend.CreateSession(r.Context(), id, args.Title)
+	sess, err := c.backend.CreateSession(r.Context(), id, args.Title, args.Harness)
 	if err != nil {
 		c.handleError(w, r, err)
 		return

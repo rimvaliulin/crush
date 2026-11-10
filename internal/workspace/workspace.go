@@ -128,6 +128,7 @@ type AgentModel struct {
 type Workspace interface {
 	// Sessions
 	CreateSession(ctx context.Context, title string) (session.Session, error)
+	CreateHarnessSession(ctx context.Context, title, harnessName string) (session.Session, error)
 	GetSession(ctx context.Context, sessionID string) (session.Session, error)
 	ListSessions(ctx context.Context) ([]session.Session, error)
 	SaveSession(ctx context.Context, sess session.Session) (session.Session, error)

@@ -54,6 +54,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteSessionMessagesStmt, err = db.PrepareContext(ctx, deleteSessionMessages); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSessionMessages: %w", err)
 	}
+	if q.deleteSkillStateStmt, err = db.PrepareContext(ctx, deleteSkillState); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSkillState: %w", err)
+	}
+	if q.ensureSkillStateStmt, err = db.PrepareContext(ctx, ensureSkillState); err != nil {
+		return nil, fmt.Errorf("error preparing query EnsureSkillState: %w", err)
+	}
 	if q.getAverageResponseTimeStmt, err = db.PrepareContext(ctx, getAverageResponseTime); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAverageResponseTime: %w", err)
 	}
@@ -83,6 +89,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getSessionByIDStmt, err = db.PrepareContext(ctx, getSessionByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSessionByID: %w", err)
+	}
+	if q.getSkillStateStmt, err = db.PrepareContext(ctx, getSkillState); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSkillState: %w", err)
 	}
 	if q.getToolUsageStmt, err = db.PrepareContext(ctx, getToolUsage); err != nil {
 		return nil, fmt.Errorf("error preparing query GetToolUsage: %w", err)
@@ -162,6 +171,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateSessionTitleAndUsageStmt, err = db.PrepareContext(ctx, updateSessionTitleAndUsage); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSessionTitleAndUsage: %w", err)
 	}
+	if q.upsertSkillStateStmt, err = db.PrepareContext(ctx, upsertSkillState); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertSkillState: %w", err)
+	}
 	return &q, nil
 }
 
@@ -217,6 +229,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteSessionMessagesStmt: %w", cerr)
 		}
 	}
+	if q.deleteSkillStateStmt != nil {
+		if cerr := q.deleteSkillStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSkillStateStmt: %w", cerr)
+		}
+	}
+	if q.ensureSkillStateStmt != nil {
+		if cerr := q.ensureSkillStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing ensureSkillStateStmt: %w", cerr)
+		}
+	}
 	if q.getAverageResponseTimeStmt != nil {
 		if cerr := q.getAverageResponseTimeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAverageResponseTimeStmt: %w", cerr)
@@ -265,6 +287,11 @@ func (q *Queries) Close() error {
 	if q.getSessionByIDStmt != nil {
 		if cerr := q.getSessionByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSessionByIDStmt: %w", cerr)
+		}
+	}
+	if q.getSkillStateStmt != nil {
+		if cerr := q.getSkillStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSkillStateStmt: %w", cerr)
 		}
 	}
 	if q.getToolUsageStmt != nil {
@@ -397,6 +424,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateSessionTitleAndUsageStmt: %w", cerr)
 		}
 	}
+	if q.upsertSkillStateStmt != nil {
+		if cerr := q.upsertSkillStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertSkillStateStmt: %w", cerr)
+		}
+	}
 	return err
 }
 
@@ -446,6 +478,8 @@ type Queries struct {
 	deleteSessionStmt                    *sql.Stmt
 	deleteSessionFilesStmt               *sql.Stmt
 	deleteSessionMessagesStmt            *sql.Stmt
+	deleteSkillStateStmt                 *sql.Stmt
+	ensureSkillStateStmt                 *sql.Stmt
 	getAverageResponseTimeStmt           *sql.Stmt
 	getFileStmt                          *sql.Stmt
 	getFileByPathAndSessionStmt          *sql.Stmt
@@ -456,6 +490,7 @@ type Queries struct {
 	getMessageStmt                       *sql.Stmt
 	getRecentActivityStmt                *sql.Stmt
 	getSessionByIDStmt                   *sql.Stmt
+	getSkillStateStmt                    *sql.Stmt
 	getToolUsageStmt                     *sql.Stmt
 	getTotalStatsStmt                    *sql.Stmt
 	getUsageByDayStmt                    *sql.Stmt
@@ -482,6 +517,7 @@ type Queries struct {
 	updateMessageStmt                    *sql.Stmt
 	updateSessionStmt                    *sql.Stmt
 	updateSessionTitleAndUsageStmt       *sql.Stmt
+	upsertSkillStateStmt                 *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -498,6 +534,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSessionStmt:                    q.deleteSessionStmt,
 		deleteSessionFilesStmt:               q.deleteSessionFilesStmt,
 		deleteSessionMessagesStmt:            q.deleteSessionMessagesStmt,
+		deleteSkillStateStmt:                 q.deleteSkillStateStmt,
+		ensureSkillStateStmt:                 q.ensureSkillStateStmt,
 		getAverageResponseTimeStmt:           q.getAverageResponseTimeStmt,
 		getFileStmt:                          q.getFileStmt,
 		getFileByPathAndSessionStmt:          q.getFileByPathAndSessionStmt,
@@ -508,6 +546,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getMessageStmt:                       q.getMessageStmt,
 		getRecentActivityStmt:                q.getRecentActivityStmt,
 		getSessionByIDStmt:                   q.getSessionByIDStmt,
+		getSkillStateStmt:                    q.getSkillStateStmt,
 		getToolUsageStmt:                     q.getToolUsageStmt,
 		getTotalStatsStmt:                    q.getTotalStatsStmt,
 		getUsageByDayStmt:                    q.getUsageByDayStmt,
@@ -534,5 +573,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateMessageStmt:                    q.updateMessageStmt,
 		updateSessionStmt:                    q.updateSessionStmt,
 		updateSessionTitleAndUsageStmt:       q.updateSessionTitleAndUsageStmt,
+		upsertSkillStateStmt:                 q.upsertSkillStateStmt,
 	}
 }
