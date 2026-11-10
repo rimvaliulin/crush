@@ -29,6 +29,7 @@ import (
 	"github.com/charmbracelet/crush/internal/filetracker"
 	"github.com/charmbracelet/crush/internal/format"
 	"github.com/charmbracelet/crush/internal/harness"
+	"github.com/charmbracelet/crush/internal/harness/codex"
 	"github.com/charmbracelet/crush/internal/harness/skillstate"
 	"github.com/charmbracelet/crush/internal/herdr"
 	"github.com/charmbracelet/crush/internal/history"
@@ -115,7 +116,11 @@ type App struct {
 func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr *skills.Manager) (*App, error) {
 	q := db.New(conn)
 	stateStore := skillstate.New(conn, store.Config().Options.GetSkillStateMaxBytes())
-	harnesses := harness.New(harness.NewDefault(), skillstate.NewHarness(stateStore, tools.NewSkillStateTool(stateStore)))
+	harnesses := harness.New(
+		harness.NewDefault(),
+		codex.NewHarness(store.Config().Options.GetCodexMaxOutputBytes()),
+		skillstate.NewHarness(stateStore, tools.NewSkillStateTool(stateStore)),
+	)
 	sessions := session.NewService(q, conn)
 	messages := message.NewService(q)
 	files := history.NewService(q, conn)

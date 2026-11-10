@@ -35,12 +35,14 @@ func TestHarnessSelectsTheHighlightedHarness(t *testing.T) {
 	t.Parallel()
 
 	d := newHarnessForTest()
-	d.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
-	action := d.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	for i := 1; i < len(harness.Catalog); i++ {
+		d.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
+		action := d.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	picked, ok := action.(ActionNewHarnessSession)
-	require.True(t, ok)
-	require.Equal(t, harness.SkillState, picked.Name)
+		picked, ok := action.(ActionNewHarnessSession)
+		require.True(t, ok)
+		require.Equal(t, harness.Catalog[i].Name, picked.Name, "the highlight follows the catalog")
+	}
 }
 
 func TestHarnessFiltersByName(t *testing.T) {

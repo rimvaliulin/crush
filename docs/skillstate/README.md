@@ -37,7 +37,9 @@ nothing to the system prompt, keeps the whole transcript and owns no tools.
 SKILL.state is one harness among possibly several. A harness is a named
 implementation of `internal/harness.Harness`, and SKILL.state's own lives in
 `internal/harness/skillstate`: it owns the specification, the per-session
-state, the shape of the step prompt and the tools the model sees.
+state, the shape of the step prompt and the tools the model sees. The Codex
+harness (`--harness codex`) lives in `internal/harness/codex`; see
+[docs/codex](../codex/README.md).
 A session stores only the harness name in `sessions.harness`, so adding a
 harness (its own package, an entry in `harness.Catalog`, a line in
 `app.New`) never touches the session, proto, backend or agent layers, and the

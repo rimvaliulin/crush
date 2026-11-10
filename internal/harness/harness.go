@@ -24,6 +24,10 @@ const DefaultName = "default"
 // SkillState is the name of the bounded-prompt harness.
 const SkillState = "skillstate"
 
+// Codex is the name of the Codex CLI harness: the whole transcript plus bounded
+// tool outputs.
+const Codex = "codex"
+
 // Info describes a harness before a session exists: the CLI validates
 // --harness against the catalog, the new-session dialog builds its entries
 // from it.
@@ -36,6 +40,7 @@ type Info struct {
 // entry here cannot be selected, even if it is registered.
 var Catalog = []Info{
 	{Name: DefaultName, Label: "Default"},
+	{Name: Codex, Label: "Codex"},
 	{Name: SkillState, Label: "SKILL.state"},
 }
 

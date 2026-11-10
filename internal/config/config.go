@@ -489,7 +489,13 @@ type Options struct {
 
 // HarnessOptions configures the execution harnesses a session can run.
 type HarnessOptions struct {
+	Codex      *CodexOptions      `json:"codex,omitempty" jsonschema:"description=Codex harness options (whole transcript replayed, tool outputs bounded the way the Codex CLI does)"`
 	SkillState *SkillStateOptions `json:"skillstate,omitempty" jsonschema:"description=SKILL.state harness options (bounded prompt: specification, execution state and the latest observation)"`
+}
+
+// CodexOptions configures the Codex-style harness.
+type CodexOptions struct {
+	MaxOutputBytes *int `json:"max_output_bytes,omitempty" jsonschema:"description=Cap in bytes on one tool output shown to the model. A longer output reaches the model cut in the middle, with a marker. 0 or negative restores the default.,default=12000,example=24000"`
 }
 
 // SkillStateOptions configures the bounded-prompt harness.
@@ -504,6 +510,21 @@ const DefaultMaxBackgroundJobs = 50
 // DefaultSkillStateMaxBytes bounds the compact execution state when the user
 // has not configured max_state_bytes.
 const DefaultSkillStateMaxBytes = 4096
+
+// DefaultCodexMaxOutputBytes bounds one tool output when the user has not
+// configured max_output_bytes.
+const DefaultCodexMaxOutputBytes = 12000
+
+// GetCodexMaxOutputBytes returns the tool output cap in bytes, always
+// positive. The nil receiver and every unset field mean
+// DefaultCodexMaxOutputBytes, so callers can ask without unwrapping nil
+// pointers.
+func (o *Options) GetCodexMaxOutputBytes() int {
+	if o == nil || o.Harness == nil || o.Harness.Codex == nil || o.Harness.Codex.MaxOutputBytes == nil || *o.Harness.Codex.MaxOutputBytes <= 0 {
+		return DefaultCodexMaxOutputBytes
+	}
+	return *o.Harness.Codex.MaxOutputBytes
+}
 
 // GetSkillStateMaxBytes returns the state cap in bytes, always positive. The
 // nil receiver and every unset field mean DefaultSkillStateMaxBytes, so

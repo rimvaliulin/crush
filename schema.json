@@ -45,6 +45,20 @@
         "audio"
       ]
     },
+    "CodexOptions": {
+      "properties": {
+        "max_output_bytes": {
+          "type": "integer",
+          "description": "Cap in bytes on one tool output shown to the model. A longer output reaches the model cut in the middle",
+          "default": 12000,
+          "examples": [
+            24000
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Completions": {
       "properties": {
         "max_depth": {
@@ -145,6 +159,10 @@
     },
     "HarnessOptions": {
       "properties": {
+        "codex": {
+          "$ref": "#/$defs/CodexOptions",
+          "description": "Codex harness options (whole transcript replayed"
+        },
         "skillstate": {
           "$ref": "#/$defs/SkillStateOptions",
           "description": "SKILL.state harness options (bounded prompt: specification"
